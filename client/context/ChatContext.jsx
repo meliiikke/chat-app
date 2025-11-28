@@ -1,10 +1,4 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  useCallback,
-} from "react";
+import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { AuthContext } from "./AuthContext";
 import toast from "react-hot-toast";
 
@@ -49,10 +43,7 @@ export const ChatProvider = ({ children }) => {
   const sendMessage = async (messageData) => {
     if (!selectedUser) return toast.error("No user selected");
     try {
-      const { data } = await axios.post(
-        `/api/messages/send/${selectedUser._id}`,
-        messageData
-      );
+      const { data } = await axios.post(`/api/messages/send/${selectedUser._id}`, messageData);
       if (data.success) setMessages((prev) => [...prev, data.newMessage]);
     } catch (err) {
       toast.error(err?.message || "Failed to send message");

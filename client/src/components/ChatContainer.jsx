@@ -6,33 +6,31 @@ import { AuthContext } from "../../context/AuthContext";
 import toast from "react-hot-toast";
 
 const ChatContainer = () => {
-  const {
-    messages,
-    setMessages, // <- messages'i güncellemek için ekledik
-    selectedUser,
-    setSelectedUser,
-    sendMessage,
-    getMessages,
-  } = useContext(ChatContext);
-
-  const { authUser, onlineUsers, socket } = useContext(AuthContext);
+  const { messages, selectedUser, setSelectedUser, sendMessage, getMessages } =
+    useContext(ChatContext);
+  const { authUser, onlineUsers } = useContext(AuthContext);
   const scrollEnd = useRef();
+
   const [input, setInput] = useState("");
+
+  //Handle sending a message
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (input.trim() === "" || !selectedUser) return;
+    if (input.trim() === "") return null;
     await sendMessage({ text: input.trim() });
     setInput("");
   };
+  //Handle sending a image
 
   const handleSendImage = async (e) => {
     const file = e.target.files[0];
     if (!file || !file.type.startsWith("image/")) {
-      toast.error("Select an image file");
+      toast.error("select an image file");
       return;
     }
     const reader = new FileReader();
+
     reader.onloadend = async () => {
       await sendMessage({ image: reader.result });
       e.target.value = "";
@@ -40,39 +38,21 @@ const ChatContainer = () => {
     reader.readAsDataURL(file);
   };
 
-  // Seçilen kullanıcı değişince mesajları yükle
   useEffect(() => {
-    if (!selectedUser) {
-      setMessages([]);
-      return;
+    if (selectedUser) {
+      getMessages(selectedUser._id);
     }
-    getMessages(selectedUser._id);
-  }, [selectedUser, getMessages, setMessages]);
+  }, [selectedUser]);
 
-  // Socket üzerinden gelen mesajları anlık ekle
-  useEffect(() => {
-    if (!socket) return;
-    const handleIncoming = (msg) => {
-      if (selectedUser && msg.senderId === selectedUser._id) {
-        setMessages((prev) => [...prev, { ...msg, seen: true }]);
-      }
-    };
-    socket.on("newMessage", handleIncoming);
-    return () => socket.off("newMessage", handleIncoming);
-  }, [socket, selectedUser, setMessages]);
-
-  // Scroll
   useEffect(() => {
     if (scrollEnd.current && messages) {
       scrollEnd.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
 
-  const chatMessages = messages || [];
-
   return selectedUser ? (
-    <div className="h-full overflow-scroll relative backdrop-blur-lg">
-      {/* Header */}
+    <div className="h-full overflow-scroll relative backdrop-blur-lg  ">
+      {/* header */}
       <div className="flex items-center gap-3 py-3 mx-4 border-b border-stone-500">
         <img
           src={selectedUser.profilePic || assets.avatar_icon}
@@ -91,15 +71,15 @@ const ChatContainer = () => {
           alt=""
           className="md:hidden max-w-7"
         />
+        <img src={assets.help_icon} alt="" className="max-md:hidden max-w-5" />
       </div>
-
-      {/* Chat */}
+      {/* chat */}
       <div className="flex flex-col h-[calc(100%-120px)] overflow-y-scroll p-3 pb-6">
-        {chatMessages.map((msg, index) => (
+        {messages.map((msg, index) => (
           <div
             key={index}
-            className={`flex items-end gap-2 ${
-              msg.senderId === authUser._id ? "justify-end" : "flex-row-reverse"
+            className={`flex items-end gap-2  justify-end ${
+              msg.senderId !== authUser._id && "flex-row-reverse"
             }`}
           >
             {msg.image ? (
@@ -119,7 +99,7 @@ const ChatContainer = () => {
                 {msg.text}
               </p>
             )}
-            <div className="text-center text-xs">
+            <div className=" text-center text-xs">
               <img
                 src={
                   msg.senderId === authUser._id
@@ -137,14 +117,13 @@ const ChatContainer = () => {
         ))}
         <div ref={scrollEnd}></div>
       </div>
-
-      {/* Bottom */}
+      {/* bottom  */}
       <div className="absolute bottom-0 left-0 right-0 flex items-center gap-3 p-3">
         <div className="flex-1 flex items-center bg-gray-100/12 px-3 rounded-full">
           <input
             onChange={(e) => setInput(e.target.value)}
             value={input}
-            onKeyDown={(e) => e.key === "Enter" && handleSendMessage(e)}
+            onKeyDown={(e) => (e.key === "Enter" ? handleSendMessage(e) : null)}
             type="text"
             placeholder="Send a message"
             className="flex-1 text-sm p-3 border-none rounded-lg outline-none text-white placeholder-gray-400"

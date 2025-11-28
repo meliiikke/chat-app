@@ -1,4 +1,10 @@
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+} from "react";
 import { AuthContext } from "./AuthContext";
 import toast from "react-hot-toast";
 
@@ -12,7 +18,7 @@ export const ChatProvider = ({ children }) => {
 
   const { socket, axios } = useContext(AuthContext);
 
-  // Users fetch
+  // get all users for sidebar
   const getUsers = useCallback(async () => {
     try {
       const { data } = await axios.get("/api/messages/users");
@@ -20,46 +26,61 @@ export const ChatProvider = ({ children }) => {
         setUsers(data.users);
         setUnseenMessages(data.unseenMessages || {});
       }
-    } catch (err) {
-      toast.error(err?.message || "Failed to fetch users");
+    } catch (error) {
+      toast.error(error?.message || "Failed to fetch users");
     }
   }, [axios]);
 
-  // Messages fetch
+  // get messages for selected user
   const getMessages = useCallback(
     async (userId) => {
       if (!userId) return;
       try {
         const { data } = await axios.get(`/api/messages/${userId}`);
-        if (data.success) setMessages(data.messages || []);
-      } catch (err) {
-        toast.error(err?.message || "Failed to fetch messages");
+        if (data.success) {
+          setMessages(data.messages || []);
+        }
+      } catch (error) {
+        toast.error(error?.message || "Failed to fetch messages");
       }
     },
     [axios]
   );
 
-  // Send message
+  // send message to selected user
   const sendMessage = async (messageData) => {
     if (!selectedUser) return toast.error("No user selected");
     try {
-      const { data } = await axios.post(`/api/messages/send/${selectedUser._id}`, messageData);
-      if (data.success) setMessages((prev) => [...prev, data.newMessage]);
-    } catch (err) {
-      toast.error(err?.message || "Failed to send message");
+      const { data } = await axios.post(
+        `/api/messages/send/${selectedUser._id}`,
+        messageData
+      );
+      if (data.success) {
+        setMessages((prev) => [...prev, data.newMessage]);
+      } else {
+        toast.error(data.message);
+      }
+    } catch (error) {
+      toast.error(error?.message || "Failed to send message");
     }
   };
 
-  // Incoming message handler
+  // message handler (stable reference)
   const handleIncomingMessage = useCallback(
-    (newMessage) => {
+    async (newMessage) => {
       if (!newMessage) return;
 
+      // If the incoming message is from the currently selected user -> mark seen & append
       if (selectedUser && newMessage.senderId === selectedUser._id) {
-        setMessages((prev) => [...prev, { ...newMessage, seen: true }]);
-        // mark as seen backend
-        axios.put(`/api/messages/mark/${newMessage._id}`).catch(console.error);
+        const msgToAdd = { ...newMessage, seen: true }; // avoid mutating param
+        setMessages((prev) => [...prev, msgToAdd]);
+
+        // mark seen on backend (fire & forget but catch errors)
+        axios
+          .put(`/api/messages/mark/${newMessage._id}`)
+          .catch((err) => console.error("Mark seen failed:", err));
       } else {
+        // not the active chat -> increment unseen counter
         setUnseenMessages((prev) => ({
           ...prev,
           [newMessage.senderId]: (prev[newMessage.senderId] || 0) + 1,
@@ -69,14 +90,19 @@ export const ChatProvider = ({ children }) => {
     [selectedUser, axios]
   );
 
-  // Subscribe socket
+  // subscribe / unsubscribe using stable handler
   useEffect(() => {
     if (!socket) return;
+    // attach
     socket.on("newMessage", handleIncomingMessage);
-    return () => socket.off("newMessage", handleIncomingMessage);
+
+    // cleanup
+    return () => {
+      socket.off("newMessage", handleIncomingMessage);
+    };
   }, [socket, handleIncomingMessage]);
 
-  // Selected user changes
+  // When selectedUser changes, load its messages and reset unseen count for them
   useEffect(() => {
     if (!selectedUser) {
       setMessages([]);
@@ -84,7 +110,7 @@ export const ChatProvider = ({ children }) => {
     }
     getMessages(selectedUser._id);
 
-    // reset unseen
+    // reset unseen count for selected user
     setUnseenMessages((prev) => {
       const copy = { ...prev };
       if (copy[selectedUser._id]) delete copy[selectedUser._id];
@@ -92,21 +118,16 @@ export const ChatProvider = ({ children }) => {
     });
   }, [selectedUser, getMessages]);
 
-  return (
-    <ChatContext.Provider
-      value={{
-        messages,
-        users,
-        selectedUser,
-        setSelectedUser,
-        getUsers,
-        getMessages,
-        sendMessage,
-        unseenMessages,
-        setUnseenMessages,
-      }}
-    >
-      {children}
-    </ChatContext.Provider>
-  );
+  const value = {
+    messages,
+    users,
+    selectedUser,
+    getUsers,
+    getMessages,
+    sendMessage,
+    setSelectedUser,
+    unseenMessages,
+    setUnseenMessages,
+  };
+  return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 };
